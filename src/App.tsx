@@ -1,80 +1,40 @@
-import { useState, useRef } from "react";
-import { GeoJSON, MapContainer, TileLayer } from "react-leaflet";
-import * as toGeoJSON from "@tmcw/togeojson";
-import "leaflet/dist/leaflet.css";
-import { LatLngExpression } from "leaflet";
-import L from "leaflet";
+import React, { useState, useRef } from "react";
+import {
+  GeoJSONData,
+  Summary as SummaryType,
+  DetailedInfo as DetailedInfoType,
+} from "./types/types";
+import { calculateLength } from "./utils/calculateLength";
+import FileUpload from "./components/FileUpload";
+import Summary from "./components/Summary";
+import DetailedInfo from "./components/DetailedInfo";
+import MapView from "./components/MapView";
+import { parseKML } from "./utils/parseKML";
 
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
-
-// Custom marker icon for production build
-const customIcon = L.icon({
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  tooltipAnchor: [16, -28],
-  shadowSize: [41, 41],
-});
-
-function App() {
-  const [summary, setSummary] = useState<Record<string, number> | null>(null);
-  const [detailedInfo, setDetailedInfo] = useState<Array<{
-    type: string;
-    length: number;
-  }> | null>(null);
-  const [geoJsonData, setGeoJsonData] = useState<any>(null);
+const App: React.FC = () => {
+  const [summary, setSummary] = useState<SummaryType | null>(null);
+  const [detailedInfo, setDetailedInfo] = useState<DetailedInfoType[] | null>(
+    null
+  );
+  const [geoJsonData, setGeoJsonData] = useState<GeoJSONData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // Ref for the file input
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Check if the file is a KML file
-    if (
-      file.type !== "application/vnd.google-earth.kml+xml" &&
-      file.name.split(".").pop() !== "kml"
-    ) {
-      setError("Please upload a valid KML file.");
-      return;
+  const handleFileUpload = async (file: File) => {
+    try {
+      const parsedData = await parseKML(file);
+      setGeoJsonData(parsedData);
+      setError(null);
+    } catch (err) {
+      setError(err as string);
     }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (!e.target?.result) return;
-      const parser = new DOMParser();
-      try {
-        const kml = parser.parseFromString(
-          e.target.result as string,
-          "text/xml"
-        );
-        const converted = toGeoJSON.kml(kml);
-        if (!converted.features || converted.features.length === 0) {
-          setError("The KML file is empty or invalid.");
-          return;
-        }
-        setGeoJsonData(converted);
-        setError(null); // Clear any previous errors
-      } catch (err) {
-        setError(
-          "Failed to parse the KML file. Please check the file and try again."
-        );
-      }
-    };
-    reader.onerror = () => {
-      setError("Failed to read the file. Please try again.");
-    };
-    reader.readAsText(file);
   };
 
   const handleSummary = () => {
     if (!geoJsonData) return;
 
-    const counts: Record<string, number> = {};
-    geoJsonData.features.forEach((feature: any) => {
+    const counts: SummaryType = {};
+    geoJsonData.features.forEach((feature) => {
       const type = feature.geometry.type;
       counts[type] = (counts[type] || 0) + 1;
     });
@@ -84,8 +44,8 @@ function App() {
   const handleDetailed = () => {
     if (!geoJsonData) return;
 
-    const details: Array<{ type: string; length: number }> = [];
-    geoJsonData.features.forEach((feature: any) => {
+    const details: DetailedInfoType[] = [];
+    geoJsonData.features.forEach((feature) => {
       const type = feature.geometry.type;
       if (type === "LineString" || type === "MultiLineString") {
         const length = calculateLength(feature.geometry.coordinates);
@@ -95,23 +55,16 @@ function App() {
     setDetailedInfo(details);
   };
 
-  const calculateLength = (coordinates: any[]): number => {
-    // Simplified length calculation for demonstration purposes
-    return coordinates.length;
-  };
-
   const handleReset = () => {
     setSummary(null);
     setDetailedInfo(null);
     setGeoJsonData(null);
     setError(null);
-    // Clear the file input
     if (fileInputRef.current) {
-      fileInputRef.current.value = ""; // Reset the input field
+      fileInputRef.current.value = "";
     }
   };
 
-  // Disable buttons conditionally
   const isSummaryDisabled = !geoJsonData;
   const isDetailedDisabled = !geoJsonData;
   const isResetDisabled = !geoJsonData && !summary && !detailedInfo;
@@ -119,13 +72,7 @@ function App() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
       <h1 className="text-2xl font-bold mb-4 text-gray-800">KML File Viewer</h1>
-      <input
-        type="file"
-        accept=".kml"
-        onChange={handleFileUpload}
-        ref={fileInputRef} // Attach ref to the input
-        className="mb-4 p-2 border border-gray-300 rounded-lg cursor-pointer hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
-      />
+      <FileUpload onFileUpload={handleFileUpload} />
       {error && (
         <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
           {error}
@@ -166,63 +113,11 @@ function App() {
           Reset
         </button>
       </div>
-      {summary && (
-        <div className="mb-4 p-4 bg-white shadow rounded-lg w-full max-w-md">
-          <h2 className="font-semibold text-gray-700 mb-2">Summary</h2>
-          <ul className="space-y-1">
-            {Object.entries(summary).map(([key, value]) => (
-              <li key={key} className="text-gray-600">
-                <span className="font-medium">{key}:</span> {value}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {detailedInfo && (
-        <div className="mb-4 p-4 bg-white shadow rounded-lg w-full max-w-md">
-          <h2 className="font-semibold text-gray-700 mb-2">
-            Detailed Information
-          </h2>
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="text-left py-2 px-4 text-gray-600">Type</th>
-                <th className="text-left py-2 px-4 text-gray-600">Length</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detailedInfo.map((info, index) => (
-                <tr
-                  key={index}
-                  className="border-b border-gray-200 hover:bg-gray-50 transition-all duration-200"
-                >
-                  <td className="py-2 px-4 text-gray-700">{info.type}</td>
-                  <td className="py-2 px-4 text-gray-700">
-                    {info.length.toFixed(2)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <MapContainer
-        center={[20, 78] as LatLngExpression}
-        zoom={5}
-        className="h-96 w-full rounded-lg shadow-lg"
-      >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        {geoJsonData && (
-          <GeoJSON
-            data={geoJsonData}
-            pointToLayer={(_feature, latlng) =>
-              L.marker(latlng, { icon: customIcon })
-            }
-          />
-        )}
-      </MapContainer>
+      {summary && <Summary summary={summary} />}
+      {detailedInfo && <DetailedInfo detailedInfo={detailedInfo} />}
+      <MapView geoJsonData={geoJsonData} />
     </div>
   );
-}
+};
 
 export default App;
