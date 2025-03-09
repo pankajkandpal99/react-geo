@@ -3,6 +3,21 @@ import { GeoJSON, MapContainer, TileLayer } from "react-leaflet";
 import * as toGeoJSON from "@tmcw/togeojson";
 import "leaflet/dist/leaflet.css";
 import { LatLngExpression } from "leaflet";
+import L from "leaflet";
+
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
+
+// Custom marker icon for production build
+const customIcon = L.icon({
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  tooltipAnchor: [16, -28],
+  shadowSize: [41, 41],
+});
 
 function App() {
   const [summary, setSummary] = useState<Record<string, number> | null>(null);
@@ -197,7 +212,14 @@ function App() {
         className="h-96 w-full rounded-lg shadow-lg"
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        {geoJsonData && <GeoJSON data={geoJsonData} />}
+        {geoJsonData && (
+          <GeoJSON
+            data={geoJsonData}
+            pointToLayer={(_feature, latlng) =>
+              L.marker(latlng, { icon: customIcon })
+            }
+          />
+        )}
       </MapContainer>
     </div>
   );
